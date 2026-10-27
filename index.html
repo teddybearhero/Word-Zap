@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="description" content="Word Zap: a kids' spelling game. Fly Captain Cubby from Mercury to Neptune and type picture words to zap asteroids.">
 <meta name="theme-color" content="#0b0f2a">
 <style>[hidden]{display:none!important} *,*::before,*::after{box-sizing:border-box} img{max-width:100%}</style>
@@ -18,9 +18,19 @@
   --body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:dark;
 }
-html,body{height:100%}
+html,body{height:100%;overscroll-behavior:none}
 body{background:var(--space);color:var(--ink);font-family:var(--body);overflow:hidden;margin:0;-webkit-tap-highlight-color:transparent}
-#game{position:fixed;inset:0;display:flex;flex-direction:column}
+#game{position:fixed;left:0;right:0;top:0;bottom:0;display:flex;flex-direction:column;will-change:transform}
+/* keyboard open: the game is squeezed into the space above it, so tighten everything */
+#game.kb .dash{padding-block:6px 6px;gap:8px}
+#game.kb .console{gap:5px}
+#game.kb .bubble{font-size:13px}
+#game.kb #word{font-size:22px;padding:3px 10px;border-radius:12px}
+#game.kb .power{height:6px}
+#game.kb .hud{padding-top:calc(6px + env(safe-area-inset-top,0px))}
+#game.kb .hud .pill{padding:3px 10px;font-size:14px}
+#game.kb .hud .btn.small{padding:3px 10px;font-size:13px}
+#game.kb .journey{font-size:12px}
 #view{flex:1;position:relative;min-height:0;cursor:text}
 #sky{position:absolute;inset:0;width:100%;height:100%;display:block}
 
@@ -324,6 +334,32 @@ function resize(){
 }
 window.addEventListener("resize", resize); resize();
 try { new ResizeObserver(resize).observe($("view")); } catch(e) {}
+
+// ---------- keep the game above the on-screen keyboard ----------
+// The visible area (visualViewport) shrinks when the keyboard opens; size the game to it
+// and follow its offset, so nothing sits underneath the keyboard.
+const fullH = () => Math.max(window.innerHeight, document.documentElement.clientHeight);
+let tallest = fullH();
+function fitToKeyboard(){
+  const vv = window.visualViewport, game = $("game");
+  const h = vv ? vv.height : window.innerHeight, top = vv ? vv.offsetTop : 0;
+  tallest = Math.max(tallest * 0.98, fullH(), h);
+  game.style.bottom = "auto";
+  game.style.height = Math.round(h) + "px";
+  game.style.transform = top ? `translateY(${Math.round(top)}px)` : "";
+  game.classList.toggle("kb", tallest - h > 120);
+  if(document.scrollingElement && document.scrollingElement.scrollTop) document.scrollingElement.scrollTop = 0;
+  resize();
+}
+if(window.visualViewport){
+  visualViewport.addEventListener("resize", fitToKeyboard);
+  visualViewport.addEventListener("scroll", fitToKeyboard);
+}
+window.addEventListener("resize", fitToKeyboard);
+window.addEventListener("orientationchange", () => { tallest = 0; setTimeout(fitToKeyboard, 300); });
+inp.addEventListener("focus", () => { setTimeout(fitToKeyboard, 50); setTimeout(fitToKeyboard, 350); });
+inp.addEventListener("blur", () => setTimeout(fitToKeyboard, 350));
+fitToKeyboard();
 
 // ---------- starfield ----------
 const stars = Array.from({length:220}, () => ({x:Math.random()*2-1, y:Math.random()*2-1, z:Math.random()}));
