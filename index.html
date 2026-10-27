@@ -26,6 +26,20 @@ body{background:var(--space);color:var(--ink);font-family:var(--body);overflow:h
 #game.kb .console{gap:5px}
 #game.kb .bubble{font-size:13px}
 #game.kb #word{font-size:22px;padding:3px 10px;border-radius:12px}
+/* Cubby's console keyboard: used on touch screens instead of the phone keyboard */
+.keys{display:none;flex-direction:column;gap:6px;padding-top:2px}
+#game.touch .keys{display:flex}
+#game.touch .bubble{font-size:14px}
+#game.touch #word{font-size:24px;padding:3px 10px;caret-color:transparent}
+.krow{display:flex;gap:5px;justify-content:center}
+.key{flex:1 1 0;min-width:0;max-width:48px;height:46px;border:0;border-radius:11px;background:#323b78;color:var(--ink);
+  font-family:var(--body);font-weight:700;font-size:21px;box-shadow:0 3px 0 #171c44;cursor:pointer;
+  touch-action:manipulation;user-select:none;-webkit-user-select:none;padding:0}
+.key.down{transform:translateY(2px);box-shadow:0 1px 0 #171c44;background:#4a55a8}
+.key.del{flex:1.7 1 0;max-width:80px;background:#5b4a86;font-size:18px}
+.key:focus-visible{outline:3px solid var(--laser);outline-offset:2px}
+@media (max-height:680px){.key{height:40px;font-size:19px}}
+@media (max-height:560px){.key{height:34px;font-size:17px}.keys{gap:4px}}
 #game.kb .power{height:6px}
 #game.kb .hud{padding-top:calc(6px + env(safe-area-inset-top,0px))}
 #game.kb .hud .pill{padding:3px 10px;font-size:14px}
@@ -196,6 +210,7 @@ body{background:var(--space);color:var(--ink);font-family:var(--body);overflow:h
                aria-label="Type the word for the picture" placeholder="type here">
       </div>
       <div class="power" aria-hidden="true"><i id="power"></i></div>
+      <div class="keys" id="keys" role="group" aria-label="Letter keys"></div>
     </form>
   </div>
 </div>
@@ -416,7 +431,7 @@ function startLevel(i){
   S.level = i; S.hp = MAX_HP; S.score = S.score && S.mode==="next" ? S.score : 0;
   S.queue = shuffle(LEVELS[i].words.slice()).slice(0, PER_LEVEL);
   S.resolved = 0; S.spawned = 0; S.prog = 0; S.rocks = []; S.beams = []; S.parts = []; S.log = []; S.typed = ""; inp.value = "";
-  S.spawnTimer = 1.2; S.mode = "play"; inp.readOnly = false;
+  S.spawnTimer = 1.2; S.mode = "play"; inp.readOnly = TOUCH;
   $("game").classList.remove("at-title");
   $("titleScreen").hidden = true; $("endScreen").hidden = true; $("pauseScreen").hidden = true; $("hud").hidden = false;
   $("lvlLabel").textContent = `Level ${i+1}`;
@@ -451,7 +466,7 @@ function endLevel(won){
   $("endScreen").hidden = false; inp.blur();
 }
 function toMenu(){
-  S.mode = "title"; inp.readOnly = false; inp.blur(); S.rocks = []; $("endScreen").hidden = true; $("pauseScreen").hidden = true; $("hud").hidden = true;
+  S.mode = "title"; inp.readOnly = TOUCH; inp.blur(); S.rocks = []; $("endScreen").hidden = true; $("pauseScreen").hidden = true; $("hud").hidden = true;
   $("game").classList.add("at-title");
   chosen = S.level; renderLevels(); $("titleScreen").hidden = false;
   talk("Captain Cubby here. Ready when you are!", "idle");
@@ -459,7 +474,7 @@ function toMenu(){
 function setPause(on){
   if(S.mode!=="play" && S.mode!=="pause") return;
   S.mode = on ? "pause" : "play"; $("pauseScreen").hidden = !on;
-  inp.readOnly = on;
+  inp.readOnly = on || TOUCH;
   if(on) inp.blur(); else focusInput();
 }
 
@@ -469,7 +484,42 @@ function updateHud(){
 }
 function talk(html, mood){ bubble.innerHTML = html; if(mood){ S.mood = mood; S.moodT = 1.6; } }
 function talkAloud(html, mood){ talk(html, mood); speak(html.replace(/<[^>]+>/g,"").replace(/[^\w\s!?.,'-]/g,"")); }
-function focusInput(){ try{ inp.focus({preventScroll:true}); }catch(e){ inp.focus(); } }
+// Touch screens use Cubby's console keyboard, so the phone keyboard never covers the game
+const TOUCH = (() => { try { return matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0; } catch(e) { return false; } })();
+if(TOUCH){
+  $("game").classList.add("touch");
+  inp.setAttribute("inputmode", "none"); inp.setAttribute("readonly", ""); inp.placeholder = "tap the letters";
+}
+function focusInput(){ if(TOUCH) return; try{ inp.focus({preventScroll:true}); }catch(e){ inp.focus(); } }
+function pressLetter(ch){
+  if(S.mode !== "play") return;
+  inp.value = ch === "⌫" ? inp.value.slice(0, -1) : inp.value + ch;
+  if(ch === "⌫"){ S.typed = inp.value; updatePower(); return; }
+  inp.dispatchEvent(new Event("input"));
+}
+(function buildKeys(){
+  const box = $("keys");
+  ["qwertyuiop","asdfghjkl","zxcvbnm⌫"].forEach(row => {
+    const r = document.createElement("div"); r.className = "krow";
+    [...row].forEach(ch => {
+      const k = document.createElement("button");
+      k.type = "button"; k.className = "key" + (ch === "⌫" ? " del" : ""); k.textContent = ch;
+      k.setAttribute("aria-label", ch === "⌫" ? "Delete" : ch);
+      const go = e => { e.preventDefault(); k.classList.add("down"); setTimeout(()=>k.classList.remove("down"), 110); pressLetter(ch); };
+      k.addEventListener("pointerdown", go);
+      k.addEventListener("click", e => { if(e.detail === 0) go(e); });   // keyboard / switch access
+      r.appendChild(k);
+    });
+    box.appendChild(r);
+  });
+})();
+// a real keyboard still works on touch devices (tablets with keyboards) and anywhere the box isn't focused
+window.addEventListener("keydown", e => {
+  if(S.mode !== "play" || e.ctrlKey || e.metaKey || e.altKey) return;
+  if(document.activeElement === inp && !TOUCH) return;
+  if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); pressLetter(e.key.toLowerCase()); }
+  else if(e.key === "Backspace"){ e.preventDefault(); pressLetter("⌫"); }
+});
 function updatePower(){
   const t = target();
   powerBar.style.width = t ? (S.typed.length / t.word.length * 100) + "%" : "0%";
